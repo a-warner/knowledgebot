@@ -1,0 +1,13 @@
+#!/usr/bin/env ruby
+
+env_vars =
+  File.read(File.expand_path('../../.env', __FILE__)).
+    each_line.
+    map(&:chomp).
+    map { |line| line.split('=', 2) }.
+    map { |k, v| "#{k}=#{v.inspect}" }.
+    join(' ')
+
+hubot = File.expand_path('../hubot-debug', __FILE__)
+
+exec("env #{env_vars} #{hubot} --shell")

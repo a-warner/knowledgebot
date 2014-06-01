@@ -12,6 +12,13 @@ module.exports = (robot) ->
     robot.logger.error "Deployment error!"
     robot.logger.error(err)
 
+  robot.respond /what deploy environments exist\??/i, (msg) ->
+    msg.reply 'I can deploy to the following environments: ' + Object.keys(environments).join(', ')
+
   robot.respond /deploy ([a-z0-9_\-]+\s)?to (\w+)/i, (msg) ->
     branch = if (msg.match[1] || '').trim().length then msg.match[1].trim() else 'master'
-    msg.reply 'Ok, deploying ' + branch + ' to ' + msg.match[2]
+    environment = msg.match[2].toLowerCase()
+
+    return msg.reply('No environment ' + environment) unless (environment of environments)
+
+    msg.reply 'Ok, deploying ' + branch + ' to ' + environment
