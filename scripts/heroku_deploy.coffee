@@ -2,6 +2,7 @@ require('shelljs/global')
 Q = require('Q')
 Q.longStackSupport = true
 os = require('os')
+fs = require('fs')
 
 module.exports = (robot) ->
   throw new Error('hubot_deploy requires git') unless which('git')
@@ -10,6 +11,9 @@ module.exports = (robot) ->
   origin_repo_url = process.env.GIT_REPO_URL
   throw new Error('Need to specify GIT_REPO_URL to use the heroku_deploy script') unless (origin_repo_url || '').trim().length
 
+  throw new Error('I need my own private key! Please set the PRIVATE_KEY env var') unless (process.env.PRIVATE_KEY || '').trim().length
+  private_key = new Buffer(process.env.PRIVATE_KEY, 'base64')
+
   Deployer = (->
     logger = robot.logger
     environments = {}
@@ -17,6 +21,17 @@ module.exports = (robot) ->
 
     logger.info('heroku_deploy detected environments:')
     logger.info(environments)
+
+    tmp = os.tmpDir()
+    logger.info 'tmpDir is ' + tmp
+    repo_location = tmp + 'hubot_deploy_repo'
+    private_key_location = tmp + 'hubot_private_key'
+
+    deploy_exec = (input_cmd, error_message) ->
+      cmd = "ssh-agent bash -c 'ssh-add " + private_key_location + "; " + input_cmd + "'"
+      Q.nfcall(fs.writeFile, private_key_location, private_key).
+        then(-> Q.nfcall(fs.chmod, private_key_location, '600')).
+        then(-> safe_exec cmd, error_message)
 
     safe_exec = (cmd, error_message) ->
       deferred = Q.defer()
@@ -34,23 +49,21 @@ module.exports = (robot) ->
 
     deploy = (branch, environment) ->
       previous_dir = pwd()
-      tmp = os.tmpDir()
-      logger.info 'tmpDir is ' + tmp
-      repo_location = tmp + 'hubot_deploy_repo'
 
-      safe_exec('git clone ' + origin_repo_url + ' ' + repo_location).
+      deploy_exec('git clone ' + origin_repo_url + ' ' + repo_location).
         then(->
           cd(repo_location)
-          safe_exec('git branch --list --remote | egrep -q "^\\s+origin/' + branch + '$"', 'Branch ' + branch + ' does not exist')
+          deploy_exec('git branch --list --remote | egrep -q "^\\s+origin/' + branch + '$"', 'Branch ' + branch + ' does not exist')
         ).
-        then(-> safe_exec('git checkout ' + branch)).
-        then(-> safe_exec('git remote add ' + environment + ' ' + environments[environment])).
-        then(-> safe_exec('git push ' + environment + ' ' + branch + ':master')).
+        then(-> deploy_exec('git checkout ' + branch)).
+        then(-> deploy_exec('git remote add ' + environment + ' ' + environments[environment])).
+        then(-> deploy_exec('git push ' + environment + ' ' + branch + ':master')).
         catch((error) -> logger.error(error); throw error).
         fin(->
           cd(previous_dir)
           logger.info 'Cleaning up ' + repo_location + '...'
           rm('-rf', repo_location)
+          rm(private_key_location)
           logger.info 'done'
         )
 
