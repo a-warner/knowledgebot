@@ -3,3 +3,6 @@
 - Deploy roles
 - Special casing for production
 - Clobbering repos
+- If a deploy is in progress to one env, don't allow someone else to trigger one
+- Remember what branch is on what env?
+- Heroku testing!
