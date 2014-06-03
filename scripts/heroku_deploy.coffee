@@ -46,6 +46,7 @@ module.exports = (robot) ->
         then(-> safe_exec('git checkout ' + branch)).
         then(-> safe_exec('git remote add ' + environment + ' ' + environments[environment])).
         then(-> safe_exec('git push ' + environment + ' ' + branch + ':master')).
+        catch((error) -> logger.error(error); throw error).
         fin(->
           cd(previous_dir)
           logger.info 'Cleaning up ' + repo_location + '...'
@@ -78,8 +79,5 @@ module.exports = (robot) ->
 
     Deployer.deploy(branch, environment).
       then(-> msg.send('...done! ' + branch + ' has been deployed')).
-      catch((error) ->
-        msg.send('Woops! Some kind of error happened, check the logs for more details')
-        robot.logger.error(error)
-      ).
+      catch((error) -> msg.send('Woops! Some kind of error happened, check the logs for more details')).
       done()
