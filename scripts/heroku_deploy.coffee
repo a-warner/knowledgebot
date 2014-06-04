@@ -18,6 +18,9 @@ module.exports = (robot) ->
   throw new Error('I need a github host to trust, please set GITHUB_TRUSTED_HOST') unless (process.env.GITHUB_TRUSTED_HOST || '').trim().length
   github_trusted_host = new Buffer(process.env.GITHUB_TRUSTED_HOST, 'base64')
 
+  throw new Error('I need a heroku host to trust, please set HEROKU_TRUSTED_HOST') unless (process.env.HEROKU_TRUSTED_HOST || '').trim().length
+  heroku_trusted_host = new Buffer(process.env.HEROKU_TRUSTED_HOST, 'base64')
+
   class HubotError extends Error
     constructor: (msg) ->
       super(msg)
@@ -36,9 +39,9 @@ module.exports = (robot) ->
     repo_location = path.join(tmp, 'hubot_deploy_repo')
     private_key_location = path.join(tmp, 'hubot_private_key')
 
-    trust_github = ->
+    trust = (host) ->
       safe_exec('mkdir -p $HOME/.ssh && touch $HOME/.ssh/known_hosts').
-        then(-> safe_exec('grep -q ' + github_trusted_host + ' $HOME/.ssh/known_hosts || echo "' + github_trusted_host + '" >> $HOME/.ssh/known_hosts'))
+        then(-> safe_exec('grep -q ' + host + ' $HOME/.ssh/known_hosts || echo "' + host + '" >> $HOME/.ssh/known_hosts'))
 
     deploy_exec = (input_cmd, error_message) ->
       cmd = "ssh-agent bash -c 'ssh-add " + private_key_location + "; " + input_cmd + "'"
@@ -63,7 +66,8 @@ module.exports = (robot) ->
     deploy = (branch, environment) ->
       previous_dir = pwd()
 
-      trust_github().
+      trust(github_trusted_host).
+        then(-> trust(heroku_trusted_host)).
         then(-> deploy_exec('git clone ' + origin_repo_url + ' ' + repo_location)).
         then(->
           cd(repo_location)
