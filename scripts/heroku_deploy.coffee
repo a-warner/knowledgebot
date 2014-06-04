@@ -3,6 +3,7 @@ Q = require('q')
 Q.longStackSupport = true
 os = require('os')
 fs = require('fs')
+path = require('path')
 
 module.exports = (robot) ->
   throw new Error('hubot_deploy requires git') unless which('git')
@@ -24,8 +25,8 @@ module.exports = (robot) ->
 
     tmp = os.tmpDir()
     logger.info 'tmpDir is ' + tmp
-    repo_location = tmp + 'hubot_deploy_repo'
-    private_key_location = tmp + 'hubot_private_key'
+    repo_location = path.join(tmp, 'hubot_deploy_repo')
+    private_key_location = path.join(tmp, 'hubot_private_key')
 
     deploy_exec = (input_cmd, error_message) ->
       cmd = "ssh-agent bash -c 'ssh-add " + private_key_location + "; " + input_cmd + "'"
