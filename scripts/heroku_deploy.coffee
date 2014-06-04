@@ -18,6 +18,11 @@ module.exports = (robot) ->
   throw new Error('I need a github host to trust, please set GITHUB_TRUSTED_HOST') unless (process.env.GITHUB_TRUSTED_HOST || '').trim().length
   github_trusted_host = new Buffer(process.env.GITHUB_TRUSTED_HOST, 'base64')
 
+  class HubotError extends Error
+    constructor: (msg) ->
+      super(msg)
+      @hubot_error = msg
+
   Deployer = (->
     logger = robot.logger
     environments = {}
@@ -62,8 +67,9 @@ module.exports = (robot) ->
         then(-> deploy_exec('git clone ' + origin_repo_url + ' ' + repo_location)).
         then(->
           cd(repo_location)
-          deploy_exec('git branch -a | egrep -q "^\\s+remotes/origin/' + branch + '$"', 'Branch ' + branch + ' does not exist')
+          deploy_exec('git branch -a')
         ).
+        then( (branches) -> throw new HubotError("Branch " + branch + " does not exist") unless branches.match(new RegExp("^\\s+remotes\/origin\/" + branch + "$", 'm'))).
         then(-> deploy_exec('git checkout ' + branch)).
         then(-> deploy_exec('git remote add ' + environment + ' ' + environments[environment])).
         then(-> deploy_exec('git push ' + environment + ' ' + branch + ':master')).
@@ -101,5 +107,5 @@ module.exports = (robot) ->
 
     Deployer.deploy(branch, environment).
       then(-> msg.send('...done! ' + branch + ' has been deployed')).
-      catch((error) -> msg.send('Woops! Some kind of error happened, check the logs for more details')).
+      catch((error) -> msg.send(error.hubot_error || 'Woops! Some kind of error happened, check the logs for more details')).
       done()
