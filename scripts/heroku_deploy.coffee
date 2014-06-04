@@ -15,6 +15,9 @@ module.exports = (robot) ->
   throw new Error('I need my own private key! Please set the PRIVATE_KEY env var') unless (process.env.PRIVATE_KEY || '').trim().length
   private_key = new Buffer(process.env.PRIVATE_KEY, 'base64')
 
+  throw new Error('I need a github host to trust, please set GITHUB_TRUSTED_HOST') unless (process.env.GITHUB_TRUSTED_HOST || '').trim().length
+  github_trusted_host = new Buffer(process.env.GITHUB_TRUSTED_HOST, 'base64')
+
   Deployer = (->
     logger = robot.logger
     environments = {}
@@ -27,6 +30,10 @@ module.exports = (robot) ->
     logger.info 'tmpDir is ' + tmp
     repo_location = path.join(tmp, 'hubot_deploy_repo')
     private_key_location = path.join(tmp, 'hubot_private_key')
+
+    trust_github = ->
+      safe_exec(-> 'mkdir -p $HOME/.ssh && touch $HOME/.ssh/known_hosts').
+        then(-> safe_exec(-> 'grep -q ' + github_trusted_host + ' $HOME/.ssh/known_hosts || echo "' + github_trusted_host + '" >> $HOME/.ssh/known_hosts'))
 
     deploy_exec = (input_cmd, error_message) ->
       cmd = "ssh-agent bash -c 'ssh-add " + private_key_location + "; " + input_cmd + "'"
@@ -51,7 +58,8 @@ module.exports = (robot) ->
     deploy = (branch, environment) ->
       previous_dir = pwd()
 
-      deploy_exec('git clone ' + origin_repo_url + ' ' + repo_location).
+      trust_github().
+        then(-> deploy_exec('git clone ' + origin_repo_url + ' ' + repo_location)).
         then(->
           cd(repo_location)
           deploy_exec('git branch --list --remote | egrep -q "^\\s+origin/' + branch + '$"', 'Branch ' + branch + ' does not exist')
