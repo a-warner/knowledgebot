@@ -62,7 +62,7 @@ module.exports = (robot) ->
         then(-> deploy_exec('git clone ' + origin_repo_url + ' ' + repo_location)).
         then(->
           cd(repo_location)
-          deploy_exec('git branch --list --remote | egrep -q "^\\s+origin/' + branch + '$"', 'Branch ' + branch + ' does not exist')
+          deploy_exec('git branch -a | egrep -q "^\\s+remotes/origin/' + branch + '$"', 'Branch ' + branch + ' does not exist')
         ).
         then(-> deploy_exec('git checkout ' + branch)).
         then(-> deploy_exec('git remote add ' + environment + ' ' + environments[environment])).
