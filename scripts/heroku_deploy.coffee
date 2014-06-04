@@ -1,5 +1,5 @@
 require('shelljs/global')
-Q = require('Q')
+Q = require('q')
 Q.longStackSupport = true
 os = require('os')
 fs = require('fs')
