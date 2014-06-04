@@ -32,7 +32,7 @@ module.exports = (robot) ->
     private_key_location = path.join(tmp, 'hubot_private_key')
 
     trust_github = ->
-      safe_exec(-> 'mkdir -p $HOME/.ssh && touch $HOME/.ssh/known_hosts').
+      safe_exec('mkdir -p $HOME/.ssh && touch $HOME/.ssh/known_hosts').
         then(-> safe_exec('grep -q ' + github_trusted_host + ' $HOME/.ssh/known_hosts || echo "' + github_trusted_host + '" >> $HOME/.ssh/known_hosts'))
 
     deploy_exec = (input_cmd, error_message) ->
