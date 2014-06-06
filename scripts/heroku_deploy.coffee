@@ -84,8 +84,10 @@ class Deployer
     previous_dir = pwd()
     that = this
 
-    return @error(new Error("Currently deploying")) if @deploying
+    return @error(new Error("Currently deploying")) if @deploying()
     @deployment_lock = true
+
+    deployment_branch_name = 'hubot_deploy_' + branch + '_to_' + environment
 
     @trust(@config.github_trusted_host).
       then(-> that.trust(that.config.heroku_trusted_host)).
@@ -95,9 +97,11 @@ class Deployer
         that.deploy_exec('git branch -a')
       ).
       then( (branches) -> throw new HubotError("Branch " + branch + " does not exist") unless branches.match(new RegExp("^\\s+remotes\/origin\/" + branch + "$", 'm'))).
-      then(-> that.deploy_exec('git checkout ' + branch)).
       then(-> that.deploy_exec('git remote add ' + environment + ' ' + that.config.environments[environment])).
-      then(-> that.deploy_exec('git push ' + environment + ' ' + branch + ':master')).
+      then(-> that.deploy_exec('git fetch ' + environment)).
+      then(-> that.deploy_exec('git checkout -b ' + deployment_branch_name + ' ' + environment + '/master')).
+      then(-> that.deploy_exec('git merge origin/' + branch)).
+      then(-> that.deploy_exec('git push ' + environment + ' ' + deployment_branch_name + ':master')).
       catch((error) -> that.logger.error(error); throw error).
       fin(->
         cd(previous_dir)
@@ -123,7 +127,7 @@ module.exports = (robot) ->
     msg.reply 'I can deploy to the following environments: ' + deployer.environment_names().join(', ')
 
   robot.respond /deploy ([a-z0-9_\-]+\s)?to (\w+)/i, (msg) ->
-    return msg.reply("I'm deploying something right now! Give me a gosh darn minute, please") if deployer.deploying
+    return msg.reply("I'm deploying something right now! Give me a gosh darn minute, please") if deployer.deploying()
 
     branch = if (msg.match[1] || '').trim().length then msg.match[1].trim() else 'master'
     environment = msg.match[2].toLowerCase()
