@@ -37,6 +37,7 @@ class Deployer
   constructor: (logger, config) ->
     @logger = logger
     @config = config
+    @deployment_lock = false
 
     tmp = os.tmpDir()
     @logger.info 'tmpDir is ' + tmp
@@ -72,9 +73,19 @@ class Deployer
     execution.stderr.on 'data', (data) -> that.logger.info(data) if (data || '').trim.length
     deferred.promise
 
+  error: (error) ->
+    deferred = Q.defer()
+    deferred.reject(error)
+    deferred.promise
+
+  deploying: -> @deployment_lock
+
   deploy: (branch, environment) ->
     previous_dir = pwd()
     that = this
+
+    return @error(new Error("Currently deploying")) if @deploying
+    @deployment_lock = true
 
     @trust(@config.github_trusted_host).
       then(-> that.trust(that.config.heroku_trusted_host)).
@@ -94,6 +105,7 @@ class Deployer
         rm('-rf', that.repo_location)
         rm(that.private_key_location)
         that.logger.info 'done'
+        that.deployment_lock = false
       )
 
   environment_names: -> Object.keys(@config.environments)
@@ -111,6 +123,8 @@ module.exports = (robot) ->
     msg.reply 'I can deploy to the following environments: ' + deployer.environment_names().join(', ')
 
   robot.respond /deploy ([a-z0-9_\-]+\s)?to (\w+)/i, (msg) ->
+    return msg.reply("I'm deploying something right now! Give me a gosh darn minute, please") if deployer.deploying
+
     branch = if (msg.match[1] || '').trim().length then msg.match[1].trim() else 'master'
     environment = msg.match[2].toLowerCase()
 
