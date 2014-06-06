@@ -99,12 +99,22 @@ class Deployer
       then( (branches) -> throw new HubotError("Branch " + branch + " does not exist") unless branches.match(new RegExp("^\\s+remotes\/origin\/" + branch + "$", 'm'))).
       then(-> that.deploy_exec('git remote add ' + environment + ' ' + that.config.environments[environment])).
       then(-> that.deploy_exec('git fetch ' + environment)).
-      then(-> that.deploy_exec('git checkout -b ' + deployment_branch_name + ' ' + environment + '/master')).
+      then(-> that.deploy_exec('git checkout -b ' + deployment_branch_name + ' origin/' + branch)).
       then(->
-        that.deploy_exec('git merge origin/' + branch).
-          catch(-> (error) throw new HubotError('Hmm, looks like ' + branch + " didn't merge cleanly with " + environment + '/master, you could try clobbering..'))
+        unless clobber
+          that.deploy_exec('git merge ' + environment + '/master').
+            catch(-> (error) throw new HubotError('Hmm, looks like ' + branch + " didn't merge cleanly with " + environment + '/master, you could try clobbering..'))
       ).
-      then(-> that.deploy_exec('git push ' + environment + ' ' + deployment_branch_name + ':master')).
+      then(->
+        that.deploy_exec(
+          'git push ' +
+            environment +
+            ' ' +
+            deployment_branch_name +
+            ':master' +
+            if clobber then ' --force' else ''
+        )
+      ).
       catch((error) -> that.logger.error(error); throw error).
       fin(->
         cd(previous_dir)
