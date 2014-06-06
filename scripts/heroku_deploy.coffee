@@ -70,7 +70,7 @@ class Deployer
         deferred.reject(new Error(message))
 
     execution.stdout.on 'data', (data) -> that.logger.info(data)
-    execution.stderr.on 'data', (data) -> that.logger.info(data) if (data || '').trim.length
+    execution.stderr.on 'data', (data) -> that.logger.info(data) if (data || '').trim().length
     deferred.promise
 
   error: (error) ->
