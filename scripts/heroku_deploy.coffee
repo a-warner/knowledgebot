@@ -101,6 +101,7 @@ class Deployer
       then(-> that.deploy_exec('git fetch ' + environment)).
       then(-> that.deploy_exec('git checkout -b ' + deployment_branch_name + ' ' + environment + '/master')).
       then(-> that.deploy_exec('git merge origin/' + branch)).
+      catch(-> (error) throw new HubotError('Hmm, looks like ' + branch + " didn't merge cleanly with " + environment + '/master, you could try clobbering..')).
       then(-> that.deploy_exec('git push ' + environment + ' ' + deployment_branch_name + ':master')).
       catch((error) -> that.logger.error(error); throw error).
       fin(->
@@ -137,6 +138,6 @@ module.exports = (robot) ->
     msg.reply 'Ok, deploying ' + branch + ' to ' + environment + '...'
 
     deployer.deploy(branch, environment).
-      then(-> msg.send('...done! ' + branch + ' has been deployed')).
-      catch((error) -> msg.send(error.hubot_error || 'Woops! Some kind of error happened, check the logs for more details')).
+      then(-> msg.reply('...done! ' + branch + ' has been deployed')).
+      catch((error) -> msg.reply(error.hubot_error || 'Woops! Some kind of error happened, check the logs for more details')).
       done()
