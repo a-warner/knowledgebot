@@ -127,7 +127,7 @@ module.exports = (robot) ->
   robot.respond /what (deploy\s)?environments exist\??/i, (msg) ->
     msg.reply 'I can deploy to the following environments: ' + deployer.environment_names().join(', ')
 
-  robot.respond /deploy ([a-z0-9_\-]+\s)?to (\w+)/i, (msg) ->
+  robot.respond /(?:deploy|put) ([a-z0-9_\-]+\s)?(?:to|on) (\w+)/i, (msg) ->
     return msg.reply("I'm deploying something right now! Give me a gosh darn minute, please") if deployer.deploying()
 
     branch = if (msg.match[1] || '').trim().length then msg.match[1].trim() else 'master'
