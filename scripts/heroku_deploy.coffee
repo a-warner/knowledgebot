@@ -48,7 +48,7 @@ class Deployer
   trust: (host) ->
     that = this
     @safe_exec('mkdir -p $HOME/.ssh && touch $HOME/.ssh/known_hosts').
-      then(-> that.safe_exec('grep -q ' + host + ' $HOME/.ssh/known_hosts || echo "' + host + '" >> $HOME/.ssh/known_hosts'))
+      then(-> that.safe_exec('grep -q \"' + host + '\" $HOME/.ssh/known_hosts || echo "' + host + '" >> $HOME/.ssh/known_hosts'))
 
   deploy_exec: (input_cmd, error_message) ->
     that = this
@@ -80,7 +80,7 @@ class Deployer
 
   deploying: -> @deployment_lock
 
-  deploy: (branch, environment) ->
+  deploy: (branch, environment, clobber) ->
     previous_dir = pwd()
     that = this
 
@@ -100,8 +100,10 @@ class Deployer
       then(-> that.deploy_exec('git remote add ' + environment + ' ' + that.config.environments[environment])).
       then(-> that.deploy_exec('git fetch ' + environment)).
       then(-> that.deploy_exec('git checkout -b ' + deployment_branch_name + ' ' + environment + '/master')).
-      then(-> that.deploy_exec('git merge origin/' + branch)).
-      catch(-> (error) throw new HubotError('Hmm, looks like ' + branch + " didn't merge cleanly with " + environment + '/master, you could try clobbering..')).
+      then(->
+        that.deploy_exec('git merge origin/' + branch).
+          catch(-> (error) throw new HubotError('Hmm, looks like ' + branch + " didn't merge cleanly with " + environment + '/master, you could try clobbering..'))
+      ).
       then(-> that.deploy_exec('git push ' + environment + ' ' + deployment_branch_name + ':master')).
       catch((error) -> that.logger.error(error); throw error).
       fin(->
@@ -127,17 +129,19 @@ module.exports = (robot) ->
   robot.respond /what (deploy\s)?environments exist\??/i, (msg) ->
     msg.reply 'I can deploy to the following environments: ' + deployer.environment_names().join(', ')
 
-  robot.respond /(?:deploy|put) ([a-z0-9_\-]+\s)?(?:to|on) (\w+)/i, (msg) ->
+  robot.respond /(?:deploy|put) ([a-z0-9_\-]+\s)?(?:to|on) (\w+)(\s+(?:and\s+)?clobber)?/i, (msg) ->
     return msg.reply("I'm deploying something right now! Give me a gosh darn minute, please") if deployer.deploying()
 
     branch = if (msg.match[1] || '').trim().length then msg.match[1].trim() else 'master'
     environment = msg.match[2].toLowerCase()
+    clobber = (msg.match[3] || '').trim().length
 
     return msg.reply('No environment ' + environment) unless deployer.environment_exists(environment)
 
+    msg.send "It's clobbering time!!" if clobber
     msg.reply 'Ok, deploying ' + branch + ' to ' + environment + '...'
 
-    deployer.deploy(branch, environment).
+    deployer.deploy(branch, environment, clobber).
       then(-> msg.reply('...done! ' + branch + ' has been deployed')).
       catch((error) -> msg.reply(error.hubot_error || 'Woops! Some kind of error happened, check the logs for more details')).
       done()
