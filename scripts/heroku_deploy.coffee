@@ -146,7 +146,9 @@ module.exports = (robot) ->
     environment = msg.match[2].toLowerCase()
     clobber = (msg.match[3] || '').trim().length
 
+    required_role = environment + ' deployer'
     return msg.reply('No environment ' + environment) unless deployer.environment_exists(environment)
+    return msg.reply("Whoops, you're not allowed to deploy to " + environment + ' (you need to be a ' + required_role + ')') unless robot.auth.hasRole(msg.message.user, required_role)
 
     msg.send "It's clobbering time!!" if clobber
     msg.reply 'Ok, deploying ' + branch + ' to ' + environment + '...'
