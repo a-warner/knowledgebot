@@ -87,8 +87,6 @@ class Deployer
     return @error(new Error("Currently deploying")) if @deploying()
     @deployment_lock = true
 
-    deployment_branch_name = 'hubot_deploy_' + branch + '_to_' + environment
-
     @trust(@config.github_trusted_host).
       then(-> that.trust(that.config.heroku_trusted_host)).
       then(-> that.deploy_exec('git clone ' + that.config.origin_repo_url + ' ' + that.repo_location)).
@@ -99,7 +97,7 @@ class Deployer
       then( (branches) -> throw new HubotError("Branch " + branch + " does not exist") unless branches.match(new RegExp("^\\s+remotes\/origin\/" + branch + "$", 'm'))).
       then(-> that.deploy_exec('git remote add ' + environment + ' ' + that.config.environments[environment])).
       then(-> that.deploy_exec('git fetch ' + environment)).
-      then(-> that.deploy_exec('git checkout -b ' + deployment_branch_name + ' origin/' + branch)).
+      then(-> that.deploy_exec('git checkout ' + branch)).
       then(->
         unless clobber
           that.deploy_exec('git merge ' + environment + '/master').
@@ -110,7 +108,7 @@ class Deployer
           'git push ' +
             environment +
             ' ' +
-            deployment_branch_name +
+            branch +
             ':master' +
             if clobber then ' --force' else ''
         )
