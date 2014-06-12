@@ -87,6 +87,8 @@ class Deployer
     return @error(new Error("Currently deploying")) if @deploying()
     @deployment_lock = true
 
+    deploy_cmd = 'git push ' + environment + ' ' + branch + ':master'
+
     @trust(@config.github_trusted_host).
       then(-> that.trust(that.config.heroku_trusted_host)).
       then(-> that.deploy_exec('git clone ' + that.config.origin_repo_url + ' ' + that.repo_location)).
@@ -103,16 +105,9 @@ class Deployer
           that.deploy_exec('git merge ' + environment + '/master').
             catch(-> (error) throw new HubotError('Hmm, looks like ' + branch + " didn't merge cleanly with " + environment + '/master, you could try clobbering..'))
       ).
-      then(->
-        that.deploy_exec(
-          'git push ' +
-            environment +
-            ' ' +
-            branch +
-            ':master' +
-            if clobber then ' --force' else ''
-        )
-      ).
+      then(-> that.deploy_exec(deploy_cmd + ' --dry-run').catch((error) -> error.message)).
+      then( (output) -> throw new HubotError('It looks like ' + branch + ' is all up-to-date with ' + environment + ' already') if output.match(new RegExp('^Everything up-to-date', 'm'))).
+      then(-> that.deploy_exec(deploy_cmd + if clobber then ' --force' else '')).
       catch((error) -> that.logger.error(error); throw error).
       fin(->
         cd(previous_dir)
