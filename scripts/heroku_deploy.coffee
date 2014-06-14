@@ -1,3 +1,27 @@
+# Description:
+#   Deploy git repositories to heroku.
+#
+# Dependencies:
+#   Auth
+#
+# Configuration:
+#   PRIVATE_KEY - base64 encoded private key that has access to both github
+#     and heroku
+#   PUBLIC_KEY - base64 encoded public key with access to github/heroku
+#   ENVIRONMENT_NAME_DEPLOYMENT_URL - ENVIRONMENT_NAME should be the logical
+#     name of the environment, e.g. "STAGING_DEPLOYMENT_URL". Can be repeated n
+#     times for unique environment names.
+#   GIT_REPO_URL – the origin repo you want to deploy
+#   GITHUB_TRUSTED_HOST - base64 encoded line from ~/.ssh/known_hosts for github.com
+#   HEROKU_TRUSTED_HOST - base64 encoded line from ~/.ssh/known_hosts for heroku.com
+#
+# Commands:
+#   hubot deploy <branch> to <environment> - deploy to environment. Branch name defaults to "master" if not specified
+#   hubot what environments exist? - print out environments hubot can deploy to
+#
+# Author:
+#   a-warner
+
 require('shelljs/global')
 Q = require('q')
 Q.longStackSupport = true
