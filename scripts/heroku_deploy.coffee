@@ -17,6 +17,7 @@
 #
 # Commands:
 #   hubot deploy <branch> to <environment> - deploy to environment. Branch name defaults to "master" if not specified
+#   hubot deploy <branch> to <environment> clobber - deploy to environment and clobber (force push)
 #   hubot what environments exist? - print out environments hubot can deploy to
 #
 # Author:
