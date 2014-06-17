@@ -75,6 +75,11 @@ class Deployer
     @safe_exec('mkdir -p $HOME/.ssh && touch $HOME/.ssh/known_hosts').
       then(-> that.safe_exec('grep -q \"' + host + '\" $HOME/.ssh/known_hosts || echo "' + host + '" >> $HOME/.ssh/known_hosts'))
 
+  setup_git_config: ->
+    that = this
+    @safe_exec('git config --get user.name || git config user.name "Hu Bot"').
+      then(-> that.safe_exec('git config --get user.email || git config user.email "hubot@example.org"'))
+
   deploy_exec: (input_cmd, error_message) ->
     that = this
     cmd = "ssh-agent bash -c 'ssh-add " + @private_key_location + "; " + input_cmd + "'"
@@ -119,7 +124,7 @@ class Deployer
       then(-> that.deploy_exec('git clone ' + that.config.origin_repo_url + ' ' + that.repo_location)).
       then(->
         cd(that.repo_location)
-        that.deploy_exec('git branch -a')
+        that.setup_git_config().then(-> that.deploy_exec('git branch -a'))
       ).
       then( (branches) -> throw new HubotError("Branch " + branch + " does not exist") unless branches.match(new RegExp("^\\s+remotes\/origin\/" + branch + "$", 'm'))).
       then(-> that.deploy_exec('git remote add ' + environment + ' ' + that.config.environments[environment])).
