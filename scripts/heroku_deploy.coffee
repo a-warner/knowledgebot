@@ -75,11 +75,6 @@ class Deployer
     @run('mkdir -p $HOME/.ssh && touch $HOME/.ssh/known_hosts').
       then(-> that.run('grep -q \"' + host + '\" $HOME/.ssh/known_hosts || echo "' + host + '" >> $HOME/.ssh/known_hosts'))
 
-  setup_git_config: ->
-    that = this
-    @run('git config --get user.name || git config user.name "Hu Bot"').
-      then(-> that.run('git config --get user.email || git config user.email "hubot@example.org"'))
-
   error: (error) ->
     deferred = Q.defer()
     deferred.reject(error)
@@ -96,32 +91,35 @@ class Deployer
     return @error(new Error("Currently deploying")) if @deploying()
     @deployment_lock = true
 
-    deploy_cmd = 'git push ' + environment + ' ' + branch + ':master'
+    repo = null
 
     @trust(@config.github_trusted_host).
       then(-> that.trust(that.config.heroku_trusted_host)).
-      then(-> that.run('git clone ' + that.config.origin_repo_url + ' ' + that.repo_location)).
-      then(->
-        cd(that.repo_location)
-        that.setup_git_config().then(-> that.run('git branch -a'))
+      then(-> GitRepo.clone(that.logger, that.shell, that.config.origin_repo_url, that.repo_location)).
+      then((git_repo) ->
+        repo = git_repo
+        repo.branch_exists(branch)
       ).
-      then( (branches) -> throw new HubotError("Branch " + branch + " does not exist") unless branches.match(new RegExp("^\\s+remotes\/origin\/" + branch + "$", 'm'))).
-      then(-> that.run('git remote add ' + environment + ' ' + that.config.environments[environment])).
-      then(-> that.run('git fetch ' + environment)).
-      then(-> that.run('git checkout ' + branch)).
+      then((branch_exists) -> throw new HubotError("Branch #{branch} does not exist") unless branch_exists).
+      then(-> repo.add_remote(environment, that.config.environments[environment])).
+      then(-> repo.checkout(branch)).
       then(->
         unless clobber
-          that.run('git merge ' + environment + '/master').
-            catch(-> (error) throw new HubotError('Hmm, looks like ' + branch + " didn't merge cleanly with " + environment + '/master, you could try clobbering..'))
+          repo.merge("#{environment}/master").catch(-> (error) throw new HubotError("Hmm, looks like #{branch} didn't merge cleanly with #{environment}/master, you could try clobbering.."))
       ).
-      then(-> that.run(deploy_cmd + ' --dry-run').catch((error) -> error.message)).
-      then( (output) -> throw new HubotError('It looks like ' + branch + ' is all up-to-date with ' + environment + ' already') if output.match(new RegExp('^Everything up-to-date', 'm'))).
-      then(-> that.run(deploy_cmd + if clobber then ' --force' else '')).
+      then(-> repo.branch_up_to_date(environment, branch, 'master')).
+      then((branch_up_to_date) ->
+        if branch_up_to_date
+          throw new HubotError("It looks like #{branch} is all up-to-date with #{environment} already")
+      ).
+      then(->
+        flags = if clobber then ['--force'] else []
+        repo.push(environment, branch, 'master', flags)
+      ).
       catch((error) -> that.logger.error(error); throw error).
       fin(->
         cd(previous_dir)
-        that.logger.info 'Cleaning up ' + that.repo_location + '...'
-        rm('-rf', that.repo_location)
+        repo.cleanup()
         that.shell.cleanup()
         that.logger.info 'done'
         that.deployment_lock = false
@@ -162,6 +160,51 @@ class Shell
     execution.stdout.on 'data', (data) -> that.logger.info(data)
     execution.stderr.on 'data', (data) -> that.logger.info(data) if (data || '').trim().length
     deferred.promise
+
+class GitRepo
+  constructor: (logger, shell, repo_dir) ->
+    @logger = logger
+    @shell = shell
+    @repo_dir = repo_dir
+    cd(@repo_dir)
+
+  @setup: (logger, shell, location) ->
+    shell.run('git config --get user.name || git config user.name "Hu Bot"').
+      then(-> shell.run('git config --get user.email || git config user.email "hubot@example.org"')).
+      then(-> new GitRepo(logger, shell, location))
+
+  @clone: (logger, shell, repo_url, location) ->
+    shell.run("git clone #{repo_url} #{location}").
+      then(-> GitRepo.setup(logger, shell, location))
+
+  run: -> @shell.run.apply(@shell, arguments)
+
+  branch_exists: (branch) ->
+    regexp = new RegExp("^\\s+remotes\/origin\/#{branch}$", 'm')
+    @run('git branch -a').then((branches) -> !!branches.match(regexp))
+
+  add_remote: (remote_name, url) ->
+    that = this
+    @run("git remote add #{remote_name} #{url}").
+      then(-> that.run("git fetch #{remote_name}"))
+
+  checkout: (branch) -> @run("git checkout #{branch}")
+
+  merge: (branch) -> @run("git merge #{branch}")
+
+  branch_up_to_date: (remote, branch, remote_branch) ->
+    @push(remote, branch, remote_branch, ['--dry-run']).
+      catch((error) -> error.message).
+      then((output) -> !!output.match(new RegExp('^Everything up-to-date', 'm')))
+
+  push: (remote, branch, remote_branch, flags) ->
+    flag_string = flags.join(' ')
+
+    @run("git push #{remote} #{branch}:#{remote_branch} #{flag_string}")
+
+  cleanup: ->
+    @logger.info "Cleaning up #{@repo_dir}..."
+    rm('-rf', @repo_dir)
 
 module.exports = (robot) ->
   config = new Config(robot.logger)
