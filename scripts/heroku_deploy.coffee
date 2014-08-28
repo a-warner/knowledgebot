@@ -68,40 +68,17 @@ class Deployer
     @logger.info 'tmpDir is ' + tmp
 
     @repo_location = path.join(tmp, 'hubot_deploy_repo')
-    @private_key_location = path.join(tmp, 'hubot_private_key')
+    @shell = new Shell(logger, path.join(tmp, 'hubot_private_key'), @config.private_key)
 
   trust: (host) ->
     that = this
-    @safe_exec('mkdir -p $HOME/.ssh && touch $HOME/.ssh/known_hosts').
-      then(-> that.safe_exec('grep -q \"' + host + '\" $HOME/.ssh/known_hosts || echo "' + host + '" >> $HOME/.ssh/known_hosts'))
+    @run('mkdir -p $HOME/.ssh && touch $HOME/.ssh/known_hosts').
+      then(-> that.run('grep -q \"' + host + '\" $HOME/.ssh/known_hosts || echo "' + host + '" >> $HOME/.ssh/known_hosts'))
 
   setup_git_config: ->
     that = this
-    @safe_exec('git config --get user.name || git config user.name "Hu Bot"').
-      then(-> that.safe_exec('git config --get user.email || git config user.email "hubot@example.org"'))
-
-  deploy_exec: (input_cmd, error_message) ->
-    that = this
-    cmd = "ssh-agent bash -c 'ssh-add " + @private_key_location + "; " + input_cmd + "'"
-    Q.nfcall(fs.writeFile, @private_key_location, @config.private_key).
-      then(-> Q.nfcall(fs.chmod, that.private_key_location, '600')).
-      then(-> that.safe_exec cmd, error_message)
-
-  safe_exec: (cmd, error_message) ->
-    deferred = Q.defer()
-    that = this
-
-    @logger.info 'Running command: ' + cmd
-    execution = exec cmd, (status, output) ->
-      if status == 0
-        deferred.resolve(output)
-      else
-        message = error_message || "Error running " + cmd + "\n, output is:\n" + output
-        deferred.reject(new Error(message))
-
-    execution.stdout.on 'data', (data) -> that.logger.info(data)
-    execution.stderr.on 'data', (data) -> that.logger.info(data) if (data || '').trim().length
-    deferred.promise
+    @run('git config --get user.name || git config user.name "Hu Bot"').
+      then(-> that.run('git config --get user.email || git config user.email "hubot@example.org"'))
 
   error: (error) ->
     deferred = Q.defer()
@@ -109,6 +86,8 @@ class Deployer
     deferred.promise
 
   deploying: -> @deployment_lock
+
+  run: -> @shell.run.apply(@shell, arguments)
 
   deploy: (branch, environment, clobber) ->
     previous_dir = pwd()
@@ -121,35 +100,68 @@ class Deployer
 
     @trust(@config.github_trusted_host).
       then(-> that.trust(that.config.heroku_trusted_host)).
-      then(-> that.deploy_exec('git clone ' + that.config.origin_repo_url + ' ' + that.repo_location)).
+      then(-> that.run('git clone ' + that.config.origin_repo_url + ' ' + that.repo_location)).
       then(->
         cd(that.repo_location)
-        that.setup_git_config().then(-> that.deploy_exec('git branch -a'))
+        that.setup_git_config().then(-> that.run('git branch -a'))
       ).
       then( (branches) -> throw new HubotError("Branch " + branch + " does not exist") unless branches.match(new RegExp("^\\s+remotes\/origin\/" + branch + "$", 'm'))).
-      then(-> that.deploy_exec('git remote add ' + environment + ' ' + that.config.environments[environment])).
-      then(-> that.deploy_exec('git fetch ' + environment)).
-      then(-> that.deploy_exec('git checkout ' + branch)).
+      then(-> that.run('git remote add ' + environment + ' ' + that.config.environments[environment])).
+      then(-> that.run('git fetch ' + environment)).
+      then(-> that.run('git checkout ' + branch)).
       then(->
         unless clobber
-          that.deploy_exec('git merge ' + environment + '/master').
+          that.run('git merge ' + environment + '/master').
             catch(-> (error) throw new HubotError('Hmm, looks like ' + branch + " didn't merge cleanly with " + environment + '/master, you could try clobbering..'))
       ).
-      then(-> that.deploy_exec(deploy_cmd + ' --dry-run').catch((error) -> error.message)).
+      then(-> that.run(deploy_cmd + ' --dry-run').catch((error) -> error.message)).
       then( (output) -> throw new HubotError('It looks like ' + branch + ' is all up-to-date with ' + environment + ' already') if output.match(new RegExp('^Everything up-to-date', 'm'))).
-      then(-> that.deploy_exec(deploy_cmd + if clobber then ' --force' else '')).
+      then(-> that.run(deploy_cmd + if clobber then ' --force' else '')).
       catch((error) -> that.logger.error(error); throw error).
       fin(->
         cd(previous_dir)
         that.logger.info 'Cleaning up ' + that.repo_location + '...'
         rm('-rf', that.repo_location)
-        rm(that.private_key_location)
+        that.shell.cleanup()
         that.logger.info 'done'
         that.deployment_lock = false
       )
 
   environment_names: -> Object.keys(@config.environments)
   environment_exists: (env) -> env of @config.environments
+
+class Shell
+  constructor: (logger, private_key_location, private_key) ->
+    @logger = logger
+    @private_key_location = private_key_location
+    @private_key = private_key
+
+  run: (input_cmd, error_message) ->
+    that = this
+    escaped = input_cmd.replace(/"/g, "\\\"")
+    cmd = "CMD=\"#{escaped}\" ssh-agent bash -c 'ssh-add #{@private_key_location}; eval $CMD'"
+    Q.nfcall(fs.writeFile, @private_key_location, @private_key).
+      then(-> Q.nfcall(fs.chmod, that.private_key_location, '600')).
+      then(-> that.safe_exec cmd, error_message)
+
+  cleanup: ->
+    rm(@private_key_location)
+
+  safe_exec: (cmd, error_message) ->
+    deferred = Q.defer()
+    that = this
+
+    @logger.info "Running command: #{cmd}"
+    execution = exec cmd, (status, output) ->
+      if status == 0
+        deferred.resolve(output)
+      else
+        message = error_message || "Error running #{cmd}\n, output is:\n#{output}"
+        deferred.reject(new Error(message))
+
+    execution.stdout.on 'data', (data) -> that.logger.info(data)
+    execution.stderr.on 'data', (data) -> that.logger.info(data) if (data || '').trim().length
+    deferred.promise
 
 module.exports = (robot) ->
   config = new Config(robot.logger)
