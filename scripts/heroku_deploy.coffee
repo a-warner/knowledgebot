@@ -7,7 +7,6 @@
 # Configuration:
 #   PRIVATE_KEY - base64 encoded private key that has access to both github
 #     and heroku
-#   PUBLIC_KEY - base64 encoded public key with access to github/heroku
 #   ENVIRONMENT_NAME_DEPLOYMENT_URL - ENVIRONMENT_NAME should be the logical
 #     name of the environment, e.g. "STAGING_DEPLOYMENT_URL". Can be repeated n
 #     times for unique environment names.
