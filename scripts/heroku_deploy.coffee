@@ -97,7 +97,7 @@ class Deployer
       then(-> GitRepo.clone(that.logger, that.shell, that.config.origin_repo_url, that.repo_location)).
       then((git_repo) ->
         repo = git_repo
-        repo.branch_exists(branch)
+        repo.promise.then(-> repo.branch_exists(branch))
       ).
       then((branch_exists) -> throw new HubotError("Branch #{branch} does not exist") unless branch_exists).
       then(-> repo.add_remote(environment, that.config.environments[environment])).
@@ -165,15 +165,17 @@ class GitRepo
     @logger = logger
     @shell = shell
     @repo_dir = repo_dir
+    @promise = @_setup()
 
-  @_setup: (logger, shell, location) ->
-    shell.run('git config --get user.name || git config user.name "Hu Bot"').
-      then(-> shell.run('git config --get user.email || git config user.email "hubot@example.org"')).
-      then(-> new GitRepo(logger, shell, location))
+  _setup: ->
+    that = this
+    @run('git config --get user.name || git config user.name "Hu Bot"').
+      then(-> that.run('git config --get user.email || git config user.email "hubot@example.org"')).
+      then(-> that)
 
   @clone: (logger, shell, repo_url, location) ->
     shell.run("git clone #{repo_url} #{location}").
-      then(-> GitRepo._setup(logger, shell, location))
+      then(-> new GitRepo(logger, shell, location))
 
   run: ->
     previous_directory = pwd()
