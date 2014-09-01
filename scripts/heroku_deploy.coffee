@@ -168,14 +168,14 @@ class GitRepo
     @repo_dir = repo_dir
     cd(@repo_dir)
 
-  @setup: (logger, shell, location) ->
+  @_setup: (logger, shell, location) ->
     shell.run('git config --get user.name || git config user.name "Hu Bot"').
       then(-> shell.run('git config --get user.email || git config user.email "hubot@example.org"')).
       then(-> new GitRepo(logger, shell, location))
 
   @clone: (logger, shell, repo_url, location) ->
     shell.run("git clone #{repo_url} #{location}").
-      then(-> GitRepo.setup(logger, shell, location))
+      then(-> GitRepo._setup(logger, shell, location))
 
   run: -> @shell.run.apply(@shell, arguments)
 
