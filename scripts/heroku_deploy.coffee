@@ -120,7 +120,7 @@ class Deployer
       catch((error) -> that.logger.error(error); throw error).
       fin(->
         cd(previous_dir)
-        repo.cleanup()
+        repo.cleanup() if repo
         that.shell.cleanup()
         that.logger.info 'done'
         that.deployment_lock = false
