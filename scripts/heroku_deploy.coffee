@@ -85,7 +85,6 @@ class Deployer
   run: -> @shell.run.apply(@shell, arguments)
 
   deploy: (branch, environment, clobber) ->
-    previous_dir = pwd()
     that = this
 
     return @error(new Error("Currently deploying")) if @deploying()
@@ -119,7 +118,6 @@ class Deployer
       ).
       catch((error) -> that.logger.error(error); throw error).
       fin(->
-        cd(previous_dir)
         repo.cleanup() if repo
         that.shell.cleanup()
         that.logger.info 'done'
@@ -167,7 +165,6 @@ class GitRepo
     @logger = logger
     @shell = shell
     @repo_dir = repo_dir
-    cd(@repo_dir)
 
   @_setup: (logger, shell, location) ->
     shell.run('git config --get user.name || git config user.name "Hu Bot"').
@@ -178,7 +175,10 @@ class GitRepo
     shell.run("git clone #{repo_url} #{location}").
       then(-> GitRepo._setup(logger, shell, location))
 
-  run: -> @shell.run.apply(@shell, arguments)
+  run: ->
+    previous_directory = pwd()
+    cd(@repo_dir)
+    @shell.run.apply(@shell, arguments).fin(-> cd(previous_directory))
 
   branch_exists: (branch) ->
     regexp = new RegExp("^\\s+remotes\/origin\/#{branch}$", 'm')
