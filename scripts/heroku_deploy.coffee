@@ -230,7 +230,14 @@ module.exports = (robot) ->
     return msg.reply('No environment ' + environment) unless deployer.environment_exists(environment)
     return msg.reply("Whoops, you're not allowed to deploy to " + environment + ' (you need to be a ' + required_role + ')') unless robot.auth.hasRole(msg.message.user, required_role)
 
-    msg.send "It's clobbering time!!" if clobber
+    if clobber
+      if environment == 'production'
+        msg.reply "Ahhhh, I can't clobber production!"
+        msg.send "/me runs away"
+        return
+      else
+        msg.send "It's clobbering time!!"
+
     msg.reply 'Ok, deploying ' + branch + ' to ' + environment + '...'
 
     deployer.deploy(branch, environment, clobber).
