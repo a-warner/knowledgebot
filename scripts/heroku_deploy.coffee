@@ -239,7 +239,7 @@ module.exports = (robot) ->
         msg.reply "Sorry, I can only deploy master to production"
         return
 
-    msg.send "It's clobbering time!!"
+    msg.send "It's clobbering time!!" if clobber
     msg.reply 'Ok, deploying ' + branch + ' to ' + environment + '...'
 
     deployer.deploy(branch, environment, clobber).
