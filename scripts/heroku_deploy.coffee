@@ -109,7 +109,7 @@ class Deployer
       then(-> repo.branch_up_to_date(environment, branch, 'master')).
       then((branch_up_to_date) ->
         if branch_up_to_date
-          throw new HubotError("It looks like #{branch} is all up-to-date with #{environment} already")
+          throw new HubotError("It looks like #{environment} is all up-to-date with #{branch} already")
       ).
       then(->
         flags = if clobber then ['--force'] else []
