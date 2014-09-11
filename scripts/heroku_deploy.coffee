@@ -190,7 +190,7 @@ class GitRepo
     @run("git remote add #{remote_name} #{url}").
       then(-> that.run("git fetch #{remote_name}"))
 
-  checkout: (branch) -> @run("git checkout #{branch}")
+  checkout: (branch) -> @run("git checkout -b #{branch} origin/#{branch}")
 
   merge: (branch) -> @run("git merge #{branch}")
 
