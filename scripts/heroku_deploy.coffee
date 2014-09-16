@@ -181,16 +181,22 @@ class GitRepo
     cd(@repo_dir)
     @shell.run.apply(@shell, arguments).fin(-> cd(previous_directory))
 
-  branch_exists: (branch) ->
-    regexp = new RegExp("^\\s+remotes\/origin\/#{branch}$", 'm')
-    @run('git branch -a').then((branches) -> !!branches.match(regexp))
+  branch_exists: (branch, include_remote = true) ->
+    regexp = new RegExp("^[\\s*]+(remotes\/origin\/)?#{branch}$", 'm')
+    @run("git branch#{if include_remote then ' -a' else ''}").then((branches) -> !!branches.match(regexp))
 
   add_remote: (remote_name, url) ->
     that = this
     @run("git remote add #{remote_name} #{url}").
       then(-> that.run("git fetch #{remote_name}"))
 
-  checkout: (branch) -> @run("git checkout -b #{branch} origin/#{branch}")
+  checkout: (branch) ->
+    that = this
+    @branch_exists(branch, !'include_remote').then (branch_exists) ->
+      if branch_exists
+        that.run("git checkout #{branch}")
+      else
+        that.run("git checkout -b #{branch} origin/#{branch}")
 
   merge: (branch) -> @run("git merge #{branch}")
 
