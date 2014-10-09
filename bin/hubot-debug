@@ -1,6 +1,9 @@
 #!/bin/sh
 
 npm install
-export PATH="node_modules/.bin:node_modules/hubot/node_modules/.bin:$PATH"
+
+if ! command -v nodenv 2>&1; then
+  export PATH="node_modules/.bin:node_modules/hubot/node_modules/.bin:$PATH"
+fi
 
 exec coffee --nodejs --debug node_modules/.bin/hubot "$@"
