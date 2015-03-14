@@ -70,9 +70,8 @@ class Deployer
     @shell = new Shell(logger, path.join(tmp, 'hubot_private_key'), @config.private_key)
 
   trust: (host) ->
-    that = this
     @run('mkdir -p $HOME/.ssh && touch $HOME/.ssh/known_hosts').
-      then(-> that.run('grep -q \"' + host + '\" $HOME/.ssh/known_hosts || echo "' + host + '" >> $HOME/.ssh/known_hosts'))
+      then(=> @run('grep -q \"' + host + '\" $HOME/.ssh/known_hosts || echo "' + host + '" >> $HOME/.ssh/known_hosts'))
 
   error: (error) ->
     deferred = Q.defer()
@@ -84,22 +83,20 @@ class Deployer
   run: -> @shell.run.apply(@shell, arguments)
 
   deploy: (branch, environment, clobber) ->
-    that = this
-
     return @error(new Error("Currently deploying")) if @deploying()
     @deployment_lock = true
 
     repo = null
 
     @trust(@config.github_trusted_host).
-      then(-> that.trust(that.config.heroku_trusted_host)).
-      then(-> GitRepo.clone(that.logger, that.shell, that.config.origin_repo_url, that.repo_location)).
+      then(=> @trust(@config.heroku_trusted_host)).
+      then(=> GitRepo.clone(@logger, @shell, @config.origin_repo_url, @repo_location)).
       then((git_repo) ->
         repo = git_repo
         repo.promise.then(-> repo.branch_exists(branch))
       ).
       then((branch_exists) -> throw new HubotError("Branch #{branch} does not exist") unless branch_exists).
-      then(-> repo.add_remote(environment, that.config.environments[environment])).
+      then(=> repo.add_remote(environment, @config.environments[environment])).
       then(-> repo.checkout(branch)).
       then(->
         unless clobber
@@ -115,12 +112,12 @@ class Deployer
         flags = if clobber then ['--force'] else []
         repo.push(environment, branch, 'master', flags)
       ).
-      catch((error) -> that.logger.error(error); throw error).
-      fin(->
+      catch((error) => @logger.error(error); throw error).
+      fin(=>
         repo.cleanup() if repo
-        that.shell.cleanup()
-        that.logger.info 'done'
-        that.deployment_lock = false
+        @shell.cleanup()
+        @logger.info 'done'
+        @deployment_lock = false
       )
 
   environment_names: -> Object.keys(@config.environments)
@@ -133,19 +130,17 @@ class Shell
     @private_key = private_key
 
   run: (input_cmd, error_message) ->
-    that = this
     escaped = input_cmd.replace(/"/g, "\\\"")
     cmd = "CMD=\"#{escaped}\" ssh-agent bash -c 'ssh-add #{@private_key_location}; eval $CMD'"
     Q.nfcall(fs.writeFile, @private_key_location, @private_key).
-      then(-> Q.nfcall(fs.chmod, that.private_key_location, '600')).
-      then(-> that.safe_exec cmd, error_message)
+      then(=> Q.nfcall(fs.chmod, @private_key_location, '600')).
+      then(=> @safe_exec cmd, error_message)
 
   cleanup: ->
     rm(@private_key_location)
 
   safe_exec: (cmd, error_message) ->
     deferred = Q.defer()
-    that = this
 
     @logger.info "Running command: #{cmd}"
     execution = exec cmd, (status, output) ->
@@ -155,8 +150,8 @@ class Shell
         message = error_message || "Error running #{cmd}\n, output is:\n#{output}"
         deferred.reject(new Error(message))
 
-    execution.stdout.on 'data', (data) -> that.logger.info(data)
-    execution.stderr.on 'data', (data) -> that.logger.info(data) if (data || '').trim().length
+    execution.stdout.on 'data', (data) => @logger.info(data)
+    execution.stderr.on 'data', (data) => @logger.info(data) if (data || '').trim().length
     deferred.promise
 
 class GitRepo
@@ -167,10 +162,9 @@ class GitRepo
     @promise = @_setup()
 
   _setup: ->
-    that = this
     @run('git config --get user.name || git config user.name "Hu Bot"').
-      then(-> that.run('git config --get user.email || git config user.email "hubot@example.org"')).
-      then(-> that)
+      then(=> @run('git config --get user.email || git config user.email "hubot@example.org"')).
+      then(=> this)
 
   @clone: (logger, shell, repo_url, location) ->
     shell.run("git clone #{repo_url} #{location}").
@@ -186,17 +180,15 @@ class GitRepo
     @run("git branch#{if include_remote then ' -a' else ''}").then((branches) -> !!branches.match(regexp))
 
   add_remote: (remote_name, url) ->
-    that = this
     @run("git remote add #{remote_name} #{url}").
-      then(-> that.run("git fetch #{remote_name}"))
+      then(=> @run("git fetch #{remote_name}"))
 
   checkout: (branch) ->
-    that = this
-    @branch_exists(branch, !'include_remote').then (branch_exists) ->
+    @branch_exists(branch, !'include_remote').then (branch_exists) =>
       if branch_exists
-        that.run("git checkout #{branch}")
+        @run("git checkout #{branch}")
       else
-        that.run("git checkout -b #{branch} origin/#{branch}")
+        @run("git checkout -b #{branch} origin/#{branch}")
 
   merge: (branch) -> @run("git merge #{branch}")
 
