@@ -119,7 +119,7 @@ class Deployment
       then(=>
         unless @clobber
           @repo.merge("#{@environment}/master").
-            catch(-> (error) throw new HubotError("Hmm, looks like #{@branch} didn't merge cleanly with #{@environment}/master, you could try clobbering.."))
+            catch(=> (error) throw new HubotError("Hmm, looks like #{@branch} didn't merge cleanly with #{@environment}/master, you could try clobbering.."))
       ).
       then(=> @repo.branch_up_to_date(@environment, @branch, 'master')).
       then((branch_up_to_date) =>
