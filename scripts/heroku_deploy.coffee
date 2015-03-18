@@ -253,6 +253,6 @@ module.exports = (robot) ->
     msg.reply 'Ok, deploying ' + branch + ' to ' + environment + '...'
 
     deployer.deploy(branch, environment, clobber).
-      then(-> msg.reply('...done! ' + branch + ' has been deployed')).
+      then(-> msg.reply("...done! #{branch} has been deployed to #{environment}")).
       catch((error) -> msg.reply(error.hubot_error || 'Woops! Some kind of error happened, check the logs for more details')).
       done()
