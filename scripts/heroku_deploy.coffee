@@ -103,14 +103,8 @@ class Deployer
 
 class Deployment
   constructor: (options) ->
-    @branch = options.branch
-    @environment = options.environment
-    @origin_url = options.origin_url
-    @remote_url = options.remote_url
-    @clobber = options.clobber
-    @tmp = options.tmp
-    @shell = options.shell
-    @logger = options.logger
+    {@branch, @environment, @origin_url, @remote_url, @clobber, @tmp, @shell, @logger} = options
+
     @repo_location = path.join(@tmp, @environment, 'hubot_deploy_repo')
 
   deploy: ->
