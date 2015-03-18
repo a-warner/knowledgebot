@@ -66,10 +66,13 @@ class Deployer
     @tmp = os.tmpDir()
     @logger.info 'tmpDir is ' + @tmp
 
-    @shell = new Shell(logger, path.join(@tmp, 'hubot_private_key'), @config.private_key)
-    process.on('exit', @shell.cleanup.bind(@shell))
+    private_key_location = path.join(@tmp, 'hubot_private_key')
+    @shell = new Shell(logger, private_key_location)
+    process.on 'exit', => @shell.cleanup()
 
-    @trusted = @trust(@config.github_trusted_host).then(=> @trust(@config.heroku_trusted_host))
+    @setup = Q.nfcall(fs.writeFile, private_key_location, @config.private_key).
+              then(=> Q.nfcall(fs.chmod, private_key_location, '600')).
+              then(=> @trust(@config.github_trusted_host).then(=> @trust(@config.heroku_trusted_host)))
 
   trust: (host) ->
     @run('mkdir -p $HOME/.ssh && touch $HOME/.ssh/known_hosts').
@@ -80,7 +83,7 @@ class Deployer
   run: -> @shell.run.apply(@shell, arguments)
 
   deploy: (branch, environment, clobber) ->
-    @trusted.then(=>
+    @setup.then(=>
       throw new Error("Currently deploying #{environment}") if @deploying(environment)
 
       deployment = new Deployment(
@@ -137,17 +140,14 @@ class Deployment
       )
 
 class Shell
-  constructor: (logger, private_key_location, private_key) ->
+  constructor: (logger, private_key_location) ->
     @logger = logger
     @private_key_location = private_key_location
-    @private_key = private_key
 
   run: (input_cmd, error_message) ->
     escaped = input_cmd.replace(/"/g, "\\\"")
     cmd = "CMD=\"#{escaped}\" ssh-agent bash -c 'ssh-add #{@private_key_location}; eval $CMD'"
-    Q.nfcall(fs.writeFile, @private_key_location, @private_key).
-      then(=> Q.nfcall(fs.chmod, @private_key_location, '600')).
-      then(=> @safe_exec cmd, error_message)
+    @safe_exec cmd, error_message
 
   cleanup: -> rm(@private_key_location)
 
