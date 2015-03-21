@@ -34,9 +34,6 @@ class Config
     throw new Error('hubot_deploy requires git') unless which('git')
     throw new Error('hubot_deploy requires egrep') unless which('egrep')
 
-    @origin_repo_url = process.env.GIT_REPO_URL
-    throw new Error('Need to specify GIT_REPO_URL to use the heroku_deploy script') unless (@origin_repo_url || '').trim().length
-
     throw new Error('I need my own private key! Please set the PRIVATE_KEY env var') unless (process.env.PRIVATE_KEY || '').trim().length
     @private_key = new Buffer(process.env.PRIVATE_KEY, 'base64')
 
@@ -46,13 +43,14 @@ class Config
     throw new Error('I need a heroku host to trust, please set HEROKU_TRUSTED_HOST') unless (process.env.HEROKU_TRUSTED_HOST || '').trim().length
     @heroku_trusted_host = new Buffer(process.env.HEROKU_TRUSTED_HOST, 'base64')
 
-    @environments = {}
+    @apps = {}
     for key, value of process.env when process.env.hasOwnProperty(key) && /.+_HEROKU_APP$/.test(key)
       app = new HerokuApp(key, JSON.parse(value))
-      @environments[app.environment] = app.deployment_url
+      throw new Error("#{app.domain} is configured twice!") if app.domain of @apps
+      @apps[app.domain] = app
 
-    logger.info('heroku_deploy detected environments:')
-    logger.info(@environments)
+    logger.info('heroku_deploy detected apps:')
+    logger.info(@apps)
 
     @app_name = process.env.APP_NAME
     if @app_name && process.env.PAPERTRAIL_API_TOKEN
@@ -62,7 +60,7 @@ class HerokuApp
   constructor: (key, options) ->
     {@environment, @origin_repo_url, @deployment_url, @domain} = options
     for expected_key in ['environment', 'origin_repo_url', 'deployment_url', 'domain']
-      throw new Error("Expected #{expected_key} to be in #{key}") unless (options[expected_key] || '').trim().length
+      throw new Error("Expected key \"#{expected_key}\" to be in #{key}") unless (options[expected_key] || '').trim().length
       this[expected_key] = options[expected_key]
 
 class HubotError extends Error
@@ -91,46 +89,46 @@ class Deployer
     @run('mkdir -p $HOME/.ssh && touch $HOME/.ssh/known_hosts').
       then(=> @run('grep -q \"' + host + '\" $HOME/.ssh/known_hosts || echo "' + host + '" >> $HOME/.ssh/known_hosts'))
 
-  deploying: (env) -> @deployment_lock[env]
+  deploying: (domain) -> @deployment_lock[domain]
 
   run: -> @shell.run.apply(@shell, arguments)
 
-  deploy: (branch, environment, clobber) ->
+  deploy: (branch, domain, clobber) ->
     @setup.then(=>
-      throw new Error("Currently deploying #{environment}") if @deploying(environment)
+      throw new Error("Currently deploying #{domain}") if @deploying(domain)
 
       deployment = new Deployment(
-        environment: environment,
+        app: @config.apps[domain],
         branch: branch,
-        origin_url: @config.origin_repo_url,
-        remote_url: @config.environments[environment],
         clobber: clobber,
         tmp: @tmp,
         shell: @shell,
         logger: @logger
       )
 
-      @deployment_lock[environment] = deployment
+      @deployment_lock[domain] = deployment
       deployment.deploy()
-    ).fin(=> delete @deployment_lock[environment])
+    ).fin(=> delete @deployment_lock[domain])
 
-  environment_names: -> Object.keys(@config.environments)
-  environment_exists: (env) -> env of @config.environments
+  app_domain_names: -> Object.keys(@config.apps)
+  app_for: (requested_domain) ->
+    app for domain, app of @config.apps when domain.indexOf(requested_domain) == 0
 
 class Deployment
   constructor: (options) ->
-    {@branch, @environment, @origin_url, @remote_url, @clobber, @tmp, @shell, @logger} = options
+    {@branch, @app, @clobber, @tmp, @shell, @logger} = options
+    @environment = @app.environment
 
-    @repo_location = path.join(@tmp, @environment, 'hubot_deploy_repo')
+    @repo_location = path.join(@tmp, @app.domain, 'hubot_deploy_repo')
 
   deploy: ->
-    GitRepo.clone(@logger, @shell, @origin_url, @repo_location).
+    GitRepo.clone(@logger, @shell, @app.origin_repo_url, @repo_location).
       then((git_repo) =>
         @repo = git_repo
         @repo.promise.then(=> @repo.branch_exists(@branch))
       ).
       then((branch_exists) -> throw new HubotError("Branch #{@branch} does not exist") unless branch_exists).
-      then(=> @repo.add_remote(@environment, @remote_url)).
+      then(=> @repo.add_remote(@environment, @app.deployment_url)).
       then(=> @repo.checkout(@branch)).
       then(=>
         unless @clobber
@@ -149,7 +147,7 @@ class Deployment
       catch((error) => @logger.error(error); throw error).
       fin(=>
         @repo.cleanup() if @repo
-        @logger.info "done deploying #{@branch} to #{@environment}"
+        @logger.info "done deploying #{@branch} to #{@app.domain}"
       )
 
 class Shell
@@ -239,34 +237,39 @@ module.exports = (robot) ->
     robot.logger.error "Deployment error!"
     robot.logger.error(err)
 
-  robot.respond /what (deploy\s)?environments exist\??/i, (msg) ->
-    msg.reply 'I can deploy to the following environments: ' + deployer.environment_names().join(', ')
+  robot.respond /what (deploy\s)?domains exist\??/i, (msg) ->
+    msg.reply 'I can deploy to the following domains: ' + deployer.app_domain_names().join(', ')
 
-  robot.respond /(?:deploy|put|throw|launch) ([a-z0-9_\-]+\s)?(?:to|on) (\w+)(\s+(?:and\s+)?clobber)?/i, (msg) ->
+  robot.respond /(?:deploy|put|throw|launch) ([a-z0-9_\-]+\s)?(?:to|on) (\S+)(\s+(?:and\s+)?clobber)?/i, (msg) ->
     branch = if (msg.match[1] || '').trim().length then msg.match[1].trim() else 'master'
-    environment = msg.match[2].toLowerCase()
+    domain = msg.match[2].toLowerCase()
     clobber = (msg.match[3] || '').trim().length
 
-    return msg.reply("I'm deploying something to #{environment} right now! Give me a gosh darn minute, please") if deployer.deploying(environment)
+    apps = deployer.app_for(domain)
+    return msg.reply('No domain ' + domain) unless apps.length
+    return msg.reply("#{domain} matched multiple domains (#{apps.map((a) -> a.domain).join(', ')})") if apps.length > 1
 
-    required_role = environment + ' deployer'
-    return msg.reply('No environment ' + environment) unless deployer.environment_exists(environment)
-    return msg.reply("Whoops, you're not allowed to deploy to " + environment + ' (you need to be a ' + required_role + ')') unless robot.auth.hasRole(msg.message.user, required_role)
+    app = apps[0]
+    domain = app.domain
+    required_role = domain + ' deployer'
 
-    if environment == 'production'
+    return msg.reply("Whoops, you're not allowed to deploy to " + domain + ' (you need to be a ' + required_role + ')') unless robot.auth.hasRole(msg.message.user, required_role)
+    return msg.reply("I'm deploying something to #{domain} right now! Give me a gosh darn minute, please") if deployer.deploying(domain)
+
+    if app.environment == 'production'
       if clobber
         msg.reply "Ahhhh, I can't clobber production!"
         msg.send "/me runs away"
         return
       unless branch == 'master'
-        msg.reply "Sorry, I can only deploy master to production"
+        msg.reply "Sorry, I can only deploy master to a production environment"
         return
 
     msg.send "It's clobbering time!!" if clobber
-    msg.reply 'Ok, deploying ' + branch + ' to ' + environment + '...'
+    msg.reply 'Ok, deploying ' + branch + ' to ' + domain + '...'
 
-    deployer.deploy(branch, environment, clobber).
-      then(-> msg.reply("...done! #{branch} has been deployed to #{environment}")).
+    deployer.deploy(branch, domain, clobber).
+      then(-> msg.reply("...done! #{branch} has been deployed to #{domain}")).
       catch((error) ->
         log_addon_msg = ''
         if config.log_addon_url
