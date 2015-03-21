@@ -117,7 +117,7 @@ class Deployer
 class Deployment
   constructor: (options) ->
     {@branch, @app, @clobber, @tmp, @shell, @logger} = options
-    @environment = @app.environment
+    @domain = @app.domain
 
     @repo_location = path.join(@tmp, @app.domain, 'hubot_deploy_repo')
 
@@ -127,22 +127,22 @@ class Deployment
         @repo = git_repo
         @repo.promise.then(=> @repo.branch_exists(@branch))
       ).
-      then((branch_exists) -> throw new HubotError("Branch #{@branch} does not exist") unless branch_exists).
-      then(=> @repo.add_remote(@environment, @app.deployment_url)).
+      then((branch_exists) => throw new HubotError("Branch #{@branch} does not exist") unless branch_exists).
+      then(=> @repo.add_remote(@domain, @app.deployment_url)).
       then(=> @repo.checkout(@branch)).
       then(=>
         unless @clobber
-          @repo.merge("#{@environment}/master").
-            catch(=> (error) throw new HubotError("Hmm, looks like #{@branch} didn't merge cleanly with #{@environment}/master, you could try clobbering.."))
+          @repo.merge("#{@domain}/master").
+            catch(=> (error) throw new HubotError("Hmm, looks like #{@branch} didn't merge cleanly with #{@domain}/master, you could try clobbering.."))
       ).
-      then(=> @repo.branch_up_to_date(@environment, @branch, 'master')).
+      then(=> @repo.branch_up_to_date(@domain, @branch, 'master')).
       then((branch_up_to_date) =>
         if branch_up_to_date
-          throw new HubotError("It looks like #{@environment} is all up-to-date with #{@branch} already")
+          throw new HubotError("It looks like #{@domain} is all up-to-date with #{@branch} already")
       ).
       then(=>
         flags = if @clobber then ['--force'] else []
-        @repo.push(@environment, @branch, 'master', flags)
+        @repo.push(@domain, @branch, 'master', flags)
       ).
       catch((error) => @logger.error(error); throw error).
       fin(=>
