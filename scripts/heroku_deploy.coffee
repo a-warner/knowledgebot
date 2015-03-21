@@ -7,17 +7,20 @@
 # Configuration:
 #   PRIVATE_KEY - base64 encoded private key that has access to both github
 #     and heroku
-#   ENVIRONMENT_NAME_DEPLOYMENT_URL - ENVIRONMENT_NAME should be the logical
-#     name of the environment, e.g. "STAGING_DEPLOYMENT_URL". Can be repeated n
-#     times for unique environment names.
-#   GIT_REPO_URL – the origin repo you want to deploy
+#   MY_APP_NAME_HEROKU_APP - MY_APP is the logical name of the heroku app to deploy to.
+#   May be repeated N times for any number of heroku apps.
+#   Value is a JSON.stringified object with the following required keys:
+#     domain: the name of the domain to deploy to
+#     origin_repo_url: the github origin remote
+#     deployment_url: the heroku remote to deploy to
+#     environment: the environment name, use production to protect against non-master deploys and clobbering
 #   GITHUB_TRUSTED_HOST - base64 encoded line from ~/.ssh/known_hosts for github.com
 #   HEROKU_TRUSTED_HOST - base64 encoded line from ~/.ssh/known_hosts for heroku.com
 #
 # Commands:
-#   hubot deploy <branch> to <environment> - deploy to environment. Branch name defaults to "master" if not specified
-#   hubot deploy <branch> to <environment> clobber - deploy to environment and clobber (force push)
-#   hubot what environments exist? - print out environments hubot can deploy to
+#   hubot deploy <branch> to <domain> - deploy to domain. Branch name defaults to "master" if not specified
+#   hubot deploy <branch> to <domain> clobber - deploy to domain and clobber (force push)
+#   hubot what domains exist? - print out domains hubot can deploy to
 #
 # Author:
 #   a-warner
