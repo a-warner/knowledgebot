@@ -49,6 +49,10 @@ class Config
     @environments = {}
     @environments[match[1].toLowerCase()] = value for key, value of process.env when process.env.hasOwnProperty(key) && match = key.match(/([A-Z0-9_-]+)_ENVIRONMENT_DEPLOYMENT_URL/)
 
+    @app_name = process.env.APP_NAME
+    if @app_name && process.env.PAPERTRAIL_API_TOKEN
+      @log_addon_url = "https://addons-sso.heroku.com/apps/#{@app_name}/addons/papertrail"
+
     logger.info('heroku_deploy detected environments:')
     logger.info(@environments)
 
@@ -254,5 +258,10 @@ module.exports = (robot) ->
 
     deployer.deploy(branch, environment, clobber).
       then(-> msg.reply("...done! #{branch} has been deployed to #{environment}")).
-      catch((error) -> msg.reply(error.hubot_error || 'Woops! Some kind of error happened, check the logs for more details')).
-      done()
+      catch((error) ->
+        log_addon_msg = ''
+        if config.log_addon_url
+          log_addon_msg = ": #{config.log_addon_url}"
+
+        msg.reply(error.hubot_error || "Woops! Some kind of error happened, check the logs for more details#{log_addon_msg}")
+      ).done()
