@@ -61,83 +61,95 @@ class Deployer
   constructor: (logger, config) ->
     @logger = logger
     @config = config
-    @deployment_lock = false
+    @deployment_lock = {}
 
-    tmp = os.tmpDir()
-    @logger.info 'tmpDir is ' + tmp
+    @tmp = os.tmpDir()
+    @logger.info 'tmpDir is ' + @tmp
 
-    @repo_location = path.join(tmp, 'hubot_deploy_repo')
-    @shell = new Shell(logger, path.join(tmp, 'hubot_private_key'), @config.private_key)
+    private_key_location = path.join(@tmp, 'hubot_private_key')
+    @shell = new Shell(logger, private_key_location)
+    process.on 'exit', => @shell.cleanup()
+
+    @setup = Q.nfcall(fs.writeFile, private_key_location, @config.private_key).
+              then(=> Q.nfcall(fs.chmod, private_key_location, '600')).
+              then(=> @trust(@config.github_trusted_host).then(=> @trust(@config.heroku_trusted_host)))
 
   trust: (host) ->
     @run('mkdir -p $HOME/.ssh && touch $HOME/.ssh/known_hosts').
       then(=> @run('grep -q \"' + host + '\" $HOME/.ssh/known_hosts || echo "' + host + '" >> $HOME/.ssh/known_hosts'))
 
-  error: (error) ->
-    deferred = Q.defer()
-    deferred.reject(error)
-    deferred.promise
-
-  deploying: -> @deployment_lock
+  deploying: (env) -> @deployment_lock[env]
 
   run: -> @shell.run.apply(@shell, arguments)
 
   deploy: (branch, environment, clobber) ->
-    return @error(new Error("Currently deploying")) if @deploying()
-    @deployment_lock = true
+    @setup.then(=>
+      throw new Error("Currently deploying #{environment}") if @deploying(environment)
 
-    repo = null
-
-    @trust(@config.github_trusted_host).
-      then(=> @trust(@config.heroku_trusted_host)).
-      then(=> GitRepo.clone(@logger, @shell, @config.origin_repo_url, @repo_location)).
-      then((git_repo) ->
-        repo = git_repo
-        repo.promise.then(-> repo.branch_exists(branch))
-      ).
-      then((branch_exists) -> throw new HubotError("Branch #{branch} does not exist") unless branch_exists).
-      then(=> repo.add_remote(environment, @config.environments[environment])).
-      then(-> repo.checkout(branch)).
-      then(->
-        unless clobber
-          repo.merge("#{environment}/master").
-            catch(-> (error) throw new HubotError("Hmm, looks like #{branch} didn't merge cleanly with #{environment}/master, you could try clobbering.."))
-      ).
-      then(-> repo.branch_up_to_date(environment, branch, 'master')).
-      then((branch_up_to_date) ->
-        if branch_up_to_date
-          throw new HubotError("It looks like #{environment} is all up-to-date with #{branch} already")
-      ).
-      then(->
-        flags = if clobber then ['--force'] else []
-        repo.push(environment, branch, 'master', flags)
-      ).
-      catch((error) => @logger.error(error); throw error).
-      fin(=>
-        repo.cleanup() if repo
-        @shell.cleanup()
-        @logger.info 'done'
-        @deployment_lock = false
+      deployment = new Deployment(
+        environment: environment,
+        branch: branch,
+        origin_url: @config.origin_repo_url,
+        remote_url: @config.environments[environment],
+        clobber: clobber,
+        tmp: @tmp,
+        shell: @shell,
+        logger: @logger
       )
+
+      @deployment_lock[environment] = deployment
+      deployment.deploy()
+    ).fin(=> delete @deployment_lock[environment])
 
   environment_names: -> Object.keys(@config.environments)
   environment_exists: (env) -> env of @config.environments
 
+class Deployment
+  constructor: (options) ->
+    {@branch, @environment, @origin_url, @remote_url, @clobber, @tmp, @shell, @logger} = options
+
+    @repo_location = path.join(@tmp, @environment, 'hubot_deploy_repo')
+
+  deploy: ->
+    GitRepo.clone(@logger, @shell, @origin_url, @repo_location).
+      then((git_repo) =>
+        @repo = git_repo
+        @repo.promise.then(=> @repo.branch_exists(@branch))
+      ).
+      then((branch_exists) -> throw new HubotError("Branch #{@branch} does not exist") unless branch_exists).
+      then(=> @repo.add_remote(@environment, @remote_url)).
+      then(=> @repo.checkout(@branch)).
+      then(=>
+        unless @clobber
+          @repo.merge("#{@environment}/master").
+            catch(=> (error) throw new HubotError("Hmm, looks like #{@branch} didn't merge cleanly with #{@environment}/master, you could try clobbering.."))
+      ).
+      then(=> @repo.branch_up_to_date(@environment, @branch, 'master')).
+      then((branch_up_to_date) =>
+        if branch_up_to_date
+          throw new HubotError("It looks like #{@environment} is all up-to-date with #{@branch} already")
+      ).
+      then(=>
+        flags = if @clobber then ['--force'] else []
+        @repo.push(@environment, @branch, 'master', flags)
+      ).
+      catch((error) => @logger.error(error); throw error).
+      fin(=>
+        @repo.cleanup() if @repo
+        @logger.info "done deploying #{@branch} to #{@environment}"
+      )
+
 class Shell
-  constructor: (logger, private_key_location, private_key) ->
+  constructor: (logger, private_key_location) ->
     @logger = logger
     @private_key_location = private_key_location
-    @private_key = private_key
 
   run: (input_cmd, error_message) ->
     escaped = input_cmd.replace(/"/g, "\\\"")
     cmd = "CMD=\"#{escaped}\" ssh-agent bash -c 'ssh-add #{@private_key_location}; eval $CMD'"
-    Q.nfcall(fs.writeFile, @private_key_location, @private_key).
-      then(=> Q.nfcall(fs.chmod, @private_key_location, '600')).
-      then(=> @safe_exec cmd, error_message)
+    @safe_exec cmd, error_message
 
-  cleanup: ->
-    rm(@private_key_location)
+  cleanup: -> rm(@private_key_location)
 
   safe_exec: (cmd, error_message) ->
     deferred = Q.defer()
@@ -218,11 +230,11 @@ module.exports = (robot) ->
     msg.reply 'I can deploy to the following environments: ' + deployer.environment_names().join(', ')
 
   robot.respond /(?:deploy|put|throw|launch) ([a-z0-9_\-]+\s)?(?:to|on) (\w+)(\s+(?:and\s+)?clobber)?/i, (msg) ->
-    return msg.reply("I'm deploying something right now! Give me a gosh darn minute, please") if deployer.deploying()
-
     branch = if (msg.match[1] || '').trim().length then msg.match[1].trim() else 'master'
     environment = msg.match[2].toLowerCase()
     clobber = (msg.match[3] || '').trim().length
+
+    return msg.reply("I'm deploying something to #{environment} right now! Give me a gosh darn minute, please") if deployer.deploying(environment)
 
     required_role = environment + ' deployer'
     return msg.reply('No environment ' + environment) unless deployer.environment_exists(environment)
@@ -241,6 +253,6 @@ module.exports = (robot) ->
     msg.reply 'Ok, deploying ' + branch + ' to ' + environment + '...'
 
     deployer.deploy(branch, environment, clobber).
-      then(-> msg.reply('...done! ' + branch + ' has been deployed')).
+      then(-> msg.reply("...done! #{branch} has been deployed to #{environment}")).
       catch((error) -> msg.reply(error.hubot_error || 'Woops! Some kind of error happened, check the logs for more details')).
       done()
