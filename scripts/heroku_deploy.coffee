@@ -47,14 +47,23 @@ class Config
     @heroku_trusted_host = new Buffer(process.env.HEROKU_TRUSTED_HOST, 'base64')
 
     @environments = {}
-    @environments[match[1].toLowerCase()] = value for key, value of process.env when process.env.hasOwnProperty(key) && match = key.match(/([A-Z0-9_-]+)_ENVIRONMENT_DEPLOYMENT_URL/)
+    for key, value of process.env when process.env.hasOwnProperty(key) && /.+_HEROKU_APP$/.test(key)
+      app = new HerokuApp(key, JSON.parse(value))
+      @environments[app.environment] = app.deployment_url
+
+    logger.info('heroku_deploy detected environments:')
+    logger.info(@environments)
 
     @app_name = process.env.APP_NAME
     if @app_name && process.env.PAPERTRAIL_API_TOKEN
       @log_addon_url = "https://addons-sso.heroku.com/apps/#{@app_name}/addons/papertrail"
 
-    logger.info('heroku_deploy detected environments:')
-    logger.info(@environments)
+class HerokuApp
+  constructor: (key, options) ->
+    {@environment, @origin_repo_url, @deployment_url, @domain} = options
+    for expected_key in ['environment', 'origin_repo_url', 'deployment_url', 'domain']
+      throw new Error("Expected #{expected_key} to be in #{key}") unless (options[expected_key] || '').trim().length
+      this[expected_key] = options[expected_key]
 
 class HubotError extends Error
   constructor: (msg) ->

@@ -5,7 +5,7 @@ env_vars =
     each_line.
     map(&:chomp).
     map { |line| line.split('=', 2) }.
-    map { |k, v| "#{k}=#{v.inspect}" }.
+    map { |k, v| "#{k}=#{v}" }.
     join(' ')
 
 hubot = File.expand_path('../hubot-debug', __FILE__)
