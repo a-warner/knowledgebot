@@ -246,7 +246,7 @@ module.exports = (robot) ->
   robot.respond /(?:deploy|put|throw|launch) ([a-z0-9_\-]+\s)?(?:to|on) (\S+)(\s+(?:and\s+)?clobber)?/i, (msg) ->
     branch = if (msg.match[1] || '').trim().length then msg.match[1].trim() else 'master'
     domain = msg.match[2].toLowerCase()
-    domain.replace(/^http:\/\//, '') if domain
+    domain = domain.replace(/^http:\/\//, '') if domain
     clobber = (msg.match[3] || '').trim().length
 
     apps = deployer.app_for(domain)
