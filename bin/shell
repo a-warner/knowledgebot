@@ -10,4 +10,4 @@ env_vars =
 
 hubot = File.expand_path('../hubot-debug', __FILE__)
 
-exec("env #{env_vars} #{hubot} --shell")
+exec("env #{env_vars} #{hubot} --shell #{ARGV.join(' ')}")

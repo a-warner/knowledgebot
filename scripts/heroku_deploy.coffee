@@ -246,6 +246,7 @@ module.exports = (robot) ->
   robot.respond /(?:deploy|put|throw|launch) ([a-z0-9_\-]+\s)?(?:to|on) (\S+)(\s+(?:and\s+)?clobber)?/i, (msg) ->
     branch = if (msg.match[1] || '').trim().length then msg.match[1].trim() else 'master'
     domain = msg.match[2].toLowerCase()
+    domain = domain.replace(/^http:\/\//, '') if domain
     clobber = (msg.match[3] || '').trim().length
 
     apps = deployer.app_for(domain)
@@ -254,9 +255,9 @@ module.exports = (robot) ->
 
     app = apps[0]
     domain = app.domain
-    required_role = domain + ' deployer'
+    required_roles = ["#{domain} deployer", "http://#{domain} deployer", "https://#{domain} deployer"]
 
-    return msg.reply("Whoops, you're not allowed to deploy to " + domain + ' (you need to be a ' + required_role + ')') unless robot.auth.hasRole(msg.message.user, required_role)
+    return msg.reply("Whoops, you're not allowed to deploy to " + domain + ' (you need to be a ' + required_role + ')') unless required_roles.some((role)-> robot.auth.hasRole(msg.message.user, role))
     return msg.reply("I'm deploying something to #{domain} right now! Give me a gosh darn minute, please") if deployer.deploying(domain)
 
     if app.environment == 'production'
